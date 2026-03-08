@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Internal Attendance Tool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+<style>
+body { background:#f6f8fb; font-family: Arial, sans-serif; }
+.card { border-radius:12px; box-shadow:0 5px 18px rgba(0,0,0,0.08); margin-bottom:20px; transition: all 0.5s ease; }
+.admin-panel { position:fixed; bottom:25px; right:25px; z-index:1000; }
+footer { text-align:center; margin-top:30px; color:#555; font-size:0.9rem; }
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+@media (max-width:768px){ .row > .col-md-4, .row > .col-4 { margin-bottom: 15px; } }
+.select2-container--default .select2-selection--single { height: 48px; line-height: 48px; font-size: 16px; border-radius: 12px; padding-left: 12px; border: 1px solid #ccc; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 48px; }
+.select2-container--default .select2-results__option { padding: 10px 12px; font-size: 16px; }
+.select2-container--default .select2-results__option--highlighted { background-color: #e2e6ea; color: #000; }
+.select2-dropdown { border-radius: 12px; box-shadow: 0 5px 18px rgba(0,0,0,0.08); font-size: 16px; }
+.select2-results { max-height: 250px; overflow-y: auto; }
+.select2-results__option.marked { pointer-events: none; cursor: default; opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<div class="container mt-5">
+<h2 class="text-center mb-4">Internal Attendance Tool</h2>
+<div class="row text-center">
+<div class="col-md-4 col-4"><div class="card p-3"><h3 id="presentCount">0</h3><p>Present</p></div></div>
+<div class="col-md-4 col-4"><div class="card p-3"><h3 id="absentCount">0</h3><p>Absent</p></div></div>
+<div class="col-md-4 col-4"><div class="card p-3"><h3 id="totalCount">0</h3><p>Total</p></div></div>
+</div>
+<div class="card p-4 mt-4">
+<label for="nameDropdown">Select Your Name</label>
+<select id="nameDropdown" aria-label="Select your name" style="width:100%"></select>
+</div>
+</div>
+
+<div class="admin-panel">
+<button class="btn btn-danger" onclick="resetAttendance()">Admin Reset</button>
+</div>
+
+<footer>Sahwa 2026 By Shifa, Sana, Amina</footer>
+<div class="toast-container"></div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+const API = "https://script.google.com/macros/s/AKfycbwbb8NHPYxsVCVseS62a8yXh-vCO-wdw3mh3wkAB2dM8Uhil5qNY7sm5zz6CDrYIi2AGg/exec";
+let names = [], presentList = new Set();
+let selectInitialized = false;
+
+function animateCount(el, newValue){
+    $(el).prop('Counter', parseInt($(el).text())).animate({Counter: newValue}, {
+        duration: 500, easing: 'swing',
+        step: function(now){ $(el).text(Math.ceil(now)); }
+    });
+}
+
+let canVibrate = false;
+document.addEventListener('click', () => { canVibrate = true; }, {once:true});
+
+function showToast(message, type="success"){
+    if(canVibrate && navigator.vibrate) navigator.vibrate(150);
+    const audio = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAA"); 
+    audio.play().catch(()=>{});
+    const toast = $(`
+        <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `);
+    $(".toast-container").append(toast);
+    new bootstrap.Toast(toast[0], { delay: 1200 }).show();
+    toast.on("hidden.bs.toast", ()=> toast.remove());
+}
+
+setInterval(()=>{
+    fetch(API)
+    .then(res=>res.json())
+    .then(data=>loadData(data))
+    .catch(()=>showToast("Network error! Unable to sync"));
+},3000);
+
+function renderDropdown(){
+    let dropdown = $("#nameDropdown");
+    dropdown.empty();
+    names.forEach(name=>{
+        if(!presentList.has(name)) dropdown.append(`<option value="${name}">${name}</option>`);
+    });
+    dropdown.val(null).trigger('change.select2');
+}
+
+function loadData(data){
+    if(!data.names) return;
+    names = data.names;
+    presentList = new Set(data.present);
+    renderDropdown();
+    updateDashboard();
+}
+
+function updateDashboard(){
+    animateCount("#presentCount", presentList.size);
+    animateCount("#totalCount", names.length);
+    animateCount("#absentCount", names.length - presentList.size);
+}
+
+if(!selectInitialized){
+    $("#nameDropdown").select2({
+        placeholder:"Search your name",
+        allowClear:true,
+        width:'resolve',
+        minimumResultsForSearch:0,
+        dropdownAutoWidth:true
+    });
+    $("#nameDropdown").on('select2:opening', ()=>$('.select2-search__field').focus());
+    selectInitialized = true;
+}
+
+$('#nameDropdown').on("change", function(){
+    let name = this.value;
+    if(!name) return;
+    presentList.add(name);
+    showToast(`${name} attendance marked`);
+    renderDropdown();
+    updateDashboard();
+    fetch(API + "?name=" + encodeURIComponent(name))
+    .catch(()=>showToast("Network error! Attendance not marked"));
+});
+
+function resetAttendance(){
+    let password = prompt("Enter Admin Password");
+    if(password !== "shifasirajfarzaana") return;
+    fetch(API+"?reset=true")
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status==="reset") showToast("Attendance reset successfully");
+        presentList.clear();
+        renderDropdown();
+        updateDashboard();
+    })
+    .catch(err=>showToast("Network error! Reset failed"));
+}
+
+if (!!window.EventSource) {
+    const evtSource = new EventSource(API + "?stream=true");
+    evtSource.onmessage = function(e){
+        try{
+            const data = JSON.parse(e.data);
+            loadData(data);
+        }catch(err){ console.error("Invalid data from server:", e.data); }
+    };
+    evtSource.onerror = function(){ showToast("Lost connection to server", "danger"); }
+} else {
+    setInterval(()=>{
+        fetch(API)
+        .then(res=>res.json())
+        .then(data=>loadData(data))
+        .catch(()=>showToast("Network error! Unable to sync", "danger"));
+    },3000);
+}
+</script>
+</body>
+</html>
